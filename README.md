@@ -12,10 +12,10 @@ implemented. SDP definitions and Databricks deployment are still pending. See
 `results/` for verified source-table results; source creation alone does not
 establish SDP streaming compatibility.
 
-**Execution limitation on the authoring machine:** JDK 17 is available locally,
-but Maven Central endpoints refused connections. The AWS source is populated
-with PyIceberg 0.10.0, installed through the Databricks PyPI proxy. The optional
-Spark writer requires the two pinned Iceberg JARs and remains unverified.
+**Verified source access:** PyIceberg 0.10.0 populated the AWS source, and local
+Spark 4.1.0 with Iceberg 1.11.0 successfully read the same table. JDK 17 is
+available locally. Python dependencies use the Databricks PyPI proxy and
+Iceberg JARs use the Databricks Maven proxy. SDP streaming remains unverified.
 
 ## Scenario and architecture
 
@@ -70,9 +70,16 @@ uv run --locked --extra local sdp-iceberg --config config/example.toml
 ```
 
 The import check verifies Python package availability; it does not start Spark
-or prove Iceberg streaming works. Spark needs access to Maven repositories to
-fetch the Iceberg JARs at first launch; Python packages are locked by uv, while
-the Maven coordinates are pinned separately in `config/example.toml`.
+or prove Iceberg streaming works. Download the pinned JARs through the company
+Maven proxy before launching Spark:
+
+```bash
+bash scripts/fetch-iceberg-jars.sh
+```
+
+The script uses `a privately configured Maven repository` and checks SHA-256
+hashes from `scripts/iceberg-jars.sha256`. Python dependencies are locked by uv;
+Maven coordinates and JAR hashes are pinned separately.
 
 | Component | Selected baseline |
 | --- | --- |
@@ -88,7 +95,8 @@ This is the selected test baseline, not a tested compatibility matrix.
 Databricks supplies its own Spark runtime: do not install this project's local
 PySpark extra into a Databricks runtime. Record Databricks' actual runtime and
 pipeline configuration separately. Pin a Java patch/distribution and archive
-JAR checksums once the first successful execution establishes the baseline.
+JAR checksums when changing the baseline. The verified local JDK is Temurin
+17.0.20.1+1 on macOS arm64; it lives in ignored `artifacts/runtime/`.
 
 ## AWS configuration
 
@@ -192,13 +200,16 @@ credential refresh is outside this bounded reproduction.
 Optional Spark population uses the same generator and schema:
 
 ```bash
-uv run --locked --extra local python -m sdp_streaming_foreign_iceberg.dataset populate --config config/local.toml --jars /path/to/iceberg-jars
+bash scripts/fetch-iceberg-jars.sh
+uv run --locked --extra local python -m sdp_streaming_foreign_iceberg.dataset verify --config config/local.toml --jars artifacts/runtime/jars --output artifacts/spark-verification.json
 ```
 
-Set `JAVA_HOME` and provide exactly the two pinned JARs in that directory.
-Omitting `--jars` resolves the configured Maven coordinates. This path has not
-been run successfully on the authoring laptop; PyIceberg is the verified source
-writer. The public example configuration contains placeholders so every
+Set `JAVA_HOME` to a JDK 17 installation. On the authoring laptop this is
+`artifacts/runtime/jdk-17.0.20.1+1/Contents/Home`. Spark read verification passed;
+Spark population is available by replacing `verify` with `populate` against a
+fresh table, but that writer path has not been executed. PyIceberg is the
+verified source writer. Use `--jars` on the employee laptop so Spark does not
+need to resolve packages through public Maven endpoints. The public example configuration contains placeholders so every
 reproducer selects their own AWS account and bucket.
 
 ## Implementation and verification sequence

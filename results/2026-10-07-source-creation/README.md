@@ -49,3 +49,21 @@ The first PyIceberg attempt created the namespace then stopped before table
 creation because the partition source ID did not match the inferred Arrow schema.
 Explicit Iceberg field IDs fixed that setup issue; the subsequent run succeeded.
 Local SDP and Databricks foreign-table reader validation remain pending.
+
+## Local Spark read verification
+
+After configuring the Databricks Maven proxy, the pinned Iceberg JARs downloaded
+successfully. A fresh Spark 4.1.0 session using Temurin 17.0.20.1+1 read the
+PyIceberg-created source through GlueCatalog and S3FileIO. It verified 15,360
+rows, 15,360 distinct event IDs, 128 GPUs, and ten append snapshots with zero
+missing or unexpected event IDs. Exit code: 0. See `spark-verification.json`.
+
+```bash
+bash scripts/fetch-iceberg-jars.sh
+export JAVA_HOME="$PWD/artifacts/runtime/jdk-17.0.20.1+1/Contents/Home"
+uv run --locked --extra local --extra source python -m sdp_streaming_foreign_iceberg.dataset verify --config config/local.toml --jars artifacts/runtime/jars --output artifacts/spark-verification.json
+```
+
+The JAR hashes are committed in `scripts/iceberg-jars.sha256`. This validates
+Spark batch reads; SDP streaming and Databricks foreign-table reads remain
+pending. Spark population was not run.
