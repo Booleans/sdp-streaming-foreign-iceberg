@@ -62,7 +62,7 @@ def observations(config):
                 }
 
 
-def spark_session(config, jars):
+def spark_session(config, jars, extra_configuration=None):
     # AWS CLI login credentials may not be understood by the bundled Java SDK.
     # Export them in memory only; never put them in Spark properties or logs.
     aws = config['aws']
@@ -96,6 +96,8 @@ def spark_session(config, jars):
         runtime = config['runtime']
         builder = builder.config('spark.jars.packages', ','.join([
             runtime['iceberg_runtime'], runtime['iceberg_aws_bundle']]))
+    for key, value in (extra_configuration or {}).items():
+        builder = builder.config(key, value)
     spark = builder.getOrCreate()
     spark.sparkContext.setLogLevel('WARN')
     return spark

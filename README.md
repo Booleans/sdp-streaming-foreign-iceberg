@@ -8,14 +8,16 @@ The goal is a small, repeatable engineering reproduction with inspectable source
 snapshots, checkpoints, configuration, and results.
 
 **Status:** deterministic generator and append-only Iceberg source writers are
-implemented. SDP definitions and Databricks deployment are still pending. See
-`results/` for verified source-table results; source creation alone does not
-establish SDP streaming compatibility.
+implemented. The local SDP streaming pipeline and append mode passed initial, incremental,
+and checkpoint restart checks.
+Databricks deployment is still pending. See
+`results/` for verified source-table results; source creation and local streaming are recorded separately.
 
-**Verified source access:** PyIceberg 0.10.0 populated the AWS source, and local
+**Verified local streaming:** PyIceberg 0.10.0 populated the AWS source, and local
 Spark 4.1.0 with Iceberg 1.11.0 successfully read the same table. JDK 17 is
 available locally. Python dependencies use the Databricks PyPI proxy and
-Iceberg JARs use the Databricks Maven proxy. SDP streaming remains unverified.
+Iceberg JARs use a privately configured Maven mirror. See the local streaming
+validation workflow below; Databricks foreign-table reads remain pending.
 
 ## Scenario and architecture
 
@@ -194,8 +196,8 @@ The results are saved to `artifacts/source-result.json`.
 For wall-clock pacing add `--realtime`: each observation still represents five
 seconds, with sixty seconds between commits. To reproduce with a running SDP
 reader, use a fresh table name and start the reader after the table exists; that
-reader workflow has not yet been implemented. Existing source data can be read
-as an initial stream snapshot once the reader is available.
+local reader workflow is described below. Existing source data is ingested
+as an initial stream snapshot.
 
 For a new run change the table name; do not erase the existing table or snapshots.
 The ten-minute test is intentionally bounded and holds 15,360 rows in memory.
@@ -218,6 +220,59 @@ verified source writer. Use `--jars` on the employee laptop so Spark does not
 need to resolve packages through public Maven endpoints. The public example configuration contains placeholders so every
 reproducer selects their own AWS account and bucket.
 
+## Validate local SDP streaming
+
+The destination is `local.demo.iceberg_stream_copy`, an Iceberg table stored under
+`artifacts/local-sdp/warehouse/`. Persistent SDP checkpoints live under
+`artifacts/local-sdp/checkpoints/`. The source is the Glue table from your local
+configuration. Pipeline code uses `@dp.table` and `spark.readStream.format("iceberg")`.
+
+The local runner invokes the real `spark-pipelines` CLI in Spark Connect local
+mode. Each run is a bounded streaming update that consumes available data and
+exits. Repeated runs resume their checkpoint. This is triggered streaming;
+always-running operation and interrupted-mid-batch crash recovery are not tested.
+
+For a fresh reproduction, use a fresh AWS source table seeded with `populate`
+and a fresh local `--state` directory. The commands below assume the source
+starts with 15,360 rows. Do not rerun this exact count sequence against a source
+that already contains appended test batches.
+
+```bash
+# Set JAVA_HOME and privately configure package/Maven mirrors if required.
+# On the authoring laptop: source artifacts/private-proxies.env
+uv sync --frozen --extra local --extra source
+bash scripts/fetch-iceberg-jars.sh
+uv run --frozen --extra local --extra source python -m sdp_streaming_foreign_iceberg.pipeline run
+uv run --frozen --extra local --extra source python -m sdp_streaming_foreign_iceberg.pipeline verify --expected-rows 15360 --output artifacts/sdp-initial-verification.json
+
+uv run --frozen --extra source python -m sdp_streaming_foreign_iceberg.source append --batches 1
+uv run --frozen --extra local --extra source python -m sdp_streaming_foreign_iceberg.pipeline run
+uv run --frozen --extra local --extra source python -m sdp_streaming_foreign_iceberg.pipeline verify --expected-rows 16896 --output artifacts/sdp-incremental-verification.json
+
+# Restart with the same state and no new source data.
+uv run --frozen --extra local --extra source python -m sdp_streaming_foreign_iceberg.pipeline run
+uv run --frozen --extra local --extra source python -m sdp_streaming_foreign_iceberg.pipeline verify --expected-rows 16896 --output artifacts/sdp-noop-verification.json
+
+# New data after the restart.
+uv run --frozen --extra source python -m sdp_streaming_foreign_iceberg.source append --batches 1
+uv run --frozen --extra local --extra source python -m sdp_streaming_foreign_iceberg.pipeline run
+uv run --frozen --extra local --extra source python -m sdp_streaming_foreign_iceberg.pipeline verify --expected-rows 18432 --output artifacts/sdp-restart-verification.json
+```
+
+`append` extends the original seeded sequence and timestamps deterministically.
+It validates the existing table against the expected generator prefix before
+writing. Each batch has 1,536 unique new observations. Use one producer at a time.
+`source verify` infers the current duration and validates the extended dataset.
+The older Spark `dataset verify` command compares against the configured duration,
+so use `pipeline verify` for this streaming sequence.
+
+`pipeline verify` compares complete source and destination rows with `exceptAll`
+in both directions, checks distinct event IDs and expected counts, and records
+local destination snapshots and checkpoint identities. Raw result JSON, logs,
+generated pipeline specs, AWS configuration, and credentials remain untracked.
+Supply the same `--state` value to every run/verify command; a different state
+is a new experiment. Never use full refresh for the checkpoint recovery test.
+
 ## Implementation and verification sequence
 
 1. Verify the deterministic simulator and schema: count, identities,
@@ -234,8 +289,7 @@ reproducer selects their own AWS account and bucket.
    precise runtime/settings, and compare the same event identities and counts.
 6. Add anomalies and document successes or full failure reproductions.
 
-Steps 1–2 have runnable commands below. Steps 3–6 remain planned; no pipeline
-definitions are implemented yet.
+Steps 1–3 have runnable commands. Steps 4–6 remain planned.
 
 Iceberg's open source streaming reader processes append snapshots. Overwrite
 and delete snapshots fail by default; skipping them does not reproduce their
@@ -258,7 +312,8 @@ local AWS configuration are ignored by Git.
 pyproject.toml / uv.lock      Python environment and dependency lock
 .python-version              Exact Python baseline
 config/example.toml          Shared experiment defaults and Maven coordinates
-src/sdp_streaming_foreign_iceberg/    Environment-record CLI; implementation will grow here
+src/sdp_streaming_foreign_iceberg/    Generator, source writer, SDP runner, verification
+pipelines/                   Portable SDP streaming definition
 results/                     Reviewed experiment evidence
 artifacts/                   Ignored local run outputs
 ```

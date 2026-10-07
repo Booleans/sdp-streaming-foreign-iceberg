@@ -24,3 +24,14 @@ class DatasetTests(unittest.TestCase):
         config['simulation']['commit_interval_seconds'] = 7
         with self.assertRaises(ValueError):
             list(observations(config))
+
+    def test_extension_preserves_prefix_and_continues_sequences(self):
+        config = tomllib.loads(Path('config/example.toml').read_text())
+        initial = list(observations(config))
+        config['simulation']['duration_seconds'] += 60
+        extended = list(observations(config))
+        self.assertEqual(extended[:len(initial)], initial)
+        new = extended[len(initial):]
+        self.assertEqual(len(new), 1536)
+        self.assertEqual({r['sequence_number'] for r in new}, set(range(120, 132)))
+        self.assertFalse({r['event_id'] for r in initial} & {r['event_id'] for r in new})

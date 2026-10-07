@@ -14,11 +14,14 @@ from .dataset import SCHEMA, observations
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=['populate', 'verify'])
+    parser.add_argument('mode', choices=['populate', 'append', 'verify'])
     parser.add_argument('--config', type=Path, default=Path('config/local.toml'))
     parser.add_argument('--output', type=Path, default=Path('artifacts/source-result.json'))
     parser.add_argument('--realtime', action='store_true')
+    parser.add_argument('--batches', type=int, default=1, help='New one-minute batches for append')
     args = parser.parse_args()
+    if args.batches < 1:
+        parser.error('--batches must be positive')
     config = tomllib.loads(args.config.read_text())
     aws, sim = config['aws'], config['simulation']
     for identifier in (aws['database'], aws['table']):
@@ -42,6 +45,15 @@ def main():
              'timestamp': pa.timestamp('us'), 'double': pa.float64(), 'boolean': pa.bool_()}
     schema = pa.schema([pa.field(name, types[kind]) for name, kind in
                        (column.strip().split() for column in SCHEMA.split(','))])
+    identifier = (aws['database'], aws['table'])
+    before = []
+    if args.mode in ('append', 'verify'):
+        existing = catalog.load_table(identifier)
+        before = existing.scan().to_arrow().to_pylist()
+        if not before:
+            raise ValueError('Expected a populated source table')
+        current_duration = (max(r['sequence_number'] for r in before) + 1) * sim['sample_interval_seconds']
+        sim['duration_seconds'] = current_duration + (args.batches * sim['commit_interval_seconds'] if args.mode == 'append' else 0)
     rows = list(observations(config))
     digest = hashlib.sha256(json.dumps(rows, default=str, sort_keys=True).encode()).hexdigest()
     identifier = (aws['database'], aws['table'])
@@ -75,6 +87,21 @@ def main():
                 row['ingested_at'] = datetime.now(timezone.utc).replace(tzinfo=None)
             table.append(pa.Table.from_pylist(batch, schema=schema))
             print(f'Committed batch {offset // size + 1}: {len(batch)} rows', flush=True)
+    if args.mode == 'append':
+        expected_before = rows[:len(before)]
+        clean = lambda data: sorted(({**r, 'ingested_at': None} for r in data), key=lambda r: r['event_id'])
+        if clean(before) != clean(expected_before):
+            raise ValueError('Existing source does not match the deterministic prefix; refusing append')
+        size = len(sim['clouds']) * sim['gpus_per_cloud'] * (sim['commit_interval_seconds'] // sim['sample_interval_seconds'])
+        table = catalog.load_table(identifier)
+        for offset in range(len(before), len(rows), size):
+            if offset > len(before) and args.realtime:
+                time.sleep(sim['commit_interval_seconds'])
+            batch = rows[offset:offset + size]
+            for row in batch:
+                row['ingested_at'] = datetime.now(timezone.utc).replace(tzinfo=None)
+            table.append(pa.Table.from_pylist(batch, schema=schema))
+            print(f'Appended {len(batch)} new observations', flush=True)
     table = catalog.load_table(identifier)
     actual = table.scan().to_arrow().to_pylist()
     ids, expected = {r['event_id'] for r in actual}, {r['event_id'] for r in rows}
