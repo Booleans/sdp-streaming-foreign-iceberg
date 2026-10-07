@@ -1,6 +1,6 @@
 # Experiment evidence
 
-No AWS, Iceberg streaming, or Databricks experiments have been run yet.
+AWS source creation and read-back verification succeeded; see [source creation](2026-10-07-source-creation/README.md). SDP streaming and Databricks experiments have not been run yet.
 
 For each experiment create a directory named after the run ID and record:
 

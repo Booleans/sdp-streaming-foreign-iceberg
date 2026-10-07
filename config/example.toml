@@ -3,7 +3,7 @@
 profile = "REPLACE_ME"
 region = "us-west-2"
 warehouse = "s3://REPLACE_ME/gpu-telemetry/warehouse/"
-database = "gpu_telemetry"
+database = "sdp_iceberg_demo"
 table = "gpu_samples"
 
 [simulation]

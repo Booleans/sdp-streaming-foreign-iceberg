@@ -7,16 +7,15 @@ Synthetic GPU telemetry is an interchangeable sample dataset.
 The goal is a small, repeatable engineering reproduction with inspectable source
 snapshots, checkpoints, configuration, and results.
 
-**Status:** repository foundation only. Dependency configuration, experiment
-defaults, and an environment-record command are implemented. The simulator,
-Iceberg writer, SDP definitions, and Databricks deployment are planned next.
-No AWS resources have been created and streaming compatibility has not been
-established. The local and Databricks access paths must be tested separately.
+**Status:** deterministic generator and append-only Iceberg source writers are
+implemented. SDP definitions and Databricks deployment are still pending. See
+`results/` for verified source-table results; source creation alone does not
+establish SDP streaming compatibility.
 
-**Execution limitation on the authoring machine:** Java is unavailable, so Spark
-execution remains unverified. Python dependencies are locked in `uv.lock` using
-the Databricks PyPI proxy. A Python installation or import check does not establish
-an end-to-end reproduced run.
+**Execution limitation on the authoring machine:** JDK 17 is available locally,
+but Maven Central endpoints refused connections. The AWS source is populated
+with PyIceberg 0.10.0, installed through the Databricks PyPI proxy. The optional
+Spark writer requires the two pinned Iceberg JARs and remains unverified.
 
 ## Scenario and architecture
 
@@ -27,15 +26,15 @@ not a description of NVIDIA's internal infrastructure.
 
 ```text
 Local deterministic simulator
-    -> local Spark writer
+    -> local PyIceberg writer (optional Spark writer)
     -> S3 Iceberg data and metadata + AWS Glue Data Catalog
         -> local open source SDP reader (Iceberg Glue catalog)
         -> Databricks SDP reader (Unity Catalog foreign table)
 ```
 
 Glue stores the table's catalog registration; S3 holds its data and Iceberg
-metadata. Spark will create the table through the Iceberg catalog and append
-data. A Glue crawler, Glue ETL job, Kafka deployment, and cloud GPU instances
+metadata. The source writer creates the table through the Iceberg catalog and
+appends data. A Glue crawler, Glue ETL job, Kafka deployment, and cloud GPU instances
 are not required for this initial experiment.
 
 ## Reproducible local environment
@@ -82,6 +81,7 @@ the Maven coordinates are pinned separately in `config/example.toml`.
 | Java | JDK 17; record vendor and exact patch version per run |
 | Iceberg runtime | `iceberg-spark-runtime-4.1_2.13:1.11.0` |
 | Iceberg AWS bundle | `iceberg-aws-bundle:1.11.0` |
+| PyIceberg source writer | `pyiceberg[glue,pyarrow]==0.10.0` |
 | Source table specification | Iceberg v2, Parquet |
 
 This is the selected test baseline, not a tested compatibility matrix.
@@ -105,7 +105,7 @@ the configuration file's contents, so keep configuration free of secrets.
 Required resources for the next stage:
 
 1. A general-purpose S3 bucket/prefix for the Iceberg warehouse.
-2. Glue database `gpu_telemetry` and Iceberg table `gpu_samples`, created through Spark.
+2. Glue database `sdp_iceberg_demo` and Iceberg table `gpu_samples`, created through the Iceberg writer.
 3. A local AWS principal able to create/read/update those Glue objects and
    list/read/write the relevant S3 objects. Include KMS permissions if applicable
    and Lake Formation grants if that service governs the resources.
@@ -148,7 +148,7 @@ ten-minute run. With an exclusive end timestamp, a complete run should generate
 | `last_xid_error` | Integer, most recently observed error code |
 | `is_simulated`, `schema_version` | Boolean and integer |
 
-The generator will correlate load, power, and gradual thermal changes. First
+The generator correlates load, power, and gradual thermal changes. First
 establish a clean append-only baseline; then add deterministic fault scenarios
 for late data, duplicates, gaps, idle GPUs, thermal stress, and error increases.
 Synthetic values and thresholds are demonstration settings, not hardware guarantees.
@@ -158,11 +158,54 @@ Logical observations should repeat with the same seed/configuration. Actual
 ingestion times, Iceberg snapshot IDs, file names, and processing latency will
 vary between runs and must be recorded rather than compared byte for byte.
 
+## Generate and populate the source
+
+After configuring `config/local.toml` and authenticating your AWS CLI profile:
+
+```bash
+uv sync --locked --extra source
+uv run --locked --extra source python -m unittest discover -s tests -v
+uv run --locked --extra source python -m sdp_streaming_foreign_iceberg.dataset generate --config config/local.toml --output artifacts/sample.json
+uv run --locked --extra source python -m sdp_streaming_foreign_iceberg.source populate --config config/local.toml
+uv run --locked --extra source python -m sdp_streaming_foreign_iceberg.source verify --config config/local.toml
+uv run --locked --extra source sdp-iceberg --config config/local.toml
+```
+
+`populate` creates the namespace/table if absent, then writes ten append snapshots
+in accelerated time by default. It refuses a nonempty table to avoid accidental
+duplicate seeding. `verify` reads all rows back from S3 and compares every logical
+field against the deterministic generator, ignoring actual ingestion timestamps.
+The results are saved to `artifacts/source-result.json`.
+
+For wall-clock pacing add `--realtime`: each observation still represents five
+seconds, with sixty seconds between commits. To reproduce with a running SDP
+reader, use a fresh table name and start the reader after the table exists; that
+reader workflow has not yet been implemented. Existing source data can be read
+as an initial stream snapshot once the reader is available.
+
+For a new run change the table name; do not erase the existing table or snapshots.
+The ten-minute test is intentionally bounded and holds 15,360 rows in memory.
+The CLI exports refreshed AWS CLI login credentials in memory for its SDK; no
+credentials are written into project files or logs. Long-running production
+credential refresh is outside this bounded reproduction.
+
+Optional Spark population uses the same generator and schema:
+
+```bash
+uv run --locked --extra local python -m sdp_streaming_foreign_iceberg.dataset populate --config config/local.toml --jars /path/to/iceberg-jars
+```
+
+Set `JAVA_HOME` and provide exactly the two pinned JARs in that directory.
+Omitting `--jars` resolves the configured Maven coordinates. This path has not
+been run successfully on the authoring laptop; PyIceberg is the verified source
+writer. The public example configuration contains placeholders so every
+reproducer selects their own AWS account and bucket.
+
 ## Implementation and verification sequence
 
-1. Implement the deterministic simulator and schema; verify count, identities,
+1. Verify the deterministic simulator and schema: count, identities,
    sequence continuity, and metric bounds without AWS.
-2. Create the Glue Iceberg table through Spark, partitioned by `days(event_time)`.
+2. Create the Glue Iceberg table through PyIceberg, partitioned by `days(event_time)`.
    Seed one batch and verify a batch read and table metadata.
 3. Start a checkpointed local SDP reader, append subsequent batches, and verify
    it consumes new snapshots. Stop/restart the reader with its checkpoint and
@@ -174,8 +217,8 @@ vary between runs and must be recorded rather than compared byte for byte.
    precise runtime/settings, and compare the same event identities and counts.
 6. Add anomalies and document successes or full failure reproductions.
 
-These are planned acceptance steps, not commands that are already implemented.
-There are no runnable producer or pipeline definitions yet.
+Steps 1–2 have runnable commands below. Steps 3–6 remain planned; no pipeline
+definitions are implemented yet.
 
 Iceberg's open source streaming reader processes append snapshots. Overwrite
 and delete snapshots fail by default; skipping them does not reproduce their
