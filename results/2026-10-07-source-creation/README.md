@@ -15,7 +15,7 @@ remain in ignored local artifacts. No AWS credentials are committed.
 - Determinism, sequence coverage, metric bounds, and invalid-interval tests passed.
 - Logical dataset SHA-256: `6e9f6fe21c9714f051bf506311b5a4866c1d680925a57717c638b36fb00a3705`.
 
-See `verification.json` for snapshot IDs, timestamps, schema, and counts. This
+Detailed snapshot IDs, timestamps, schema, and counts are kept in ignored local artifacts. This
 is source creation evidence, not evidence of an SDP streaming read. There is no
 reader checkpoint in this experiment. No Databricks compute was used.
 
@@ -56,7 +56,7 @@ After configuring the Databricks Maven proxy, the pinned Iceberg JARs downloaded
 successfully. A fresh Spark 4.1.0 session using Temurin 17.0.20.1+1 read the
 PyIceberg-created source through GlueCatalog and S3FileIO. It verified 15,360
 rows, 15,360 distinct event IDs, 128 GPUs, and ten append snapshots with zero
-missing or unexpected event IDs. Exit code: 0. See `spark-verification.json`.
+missing or unexpected event IDs. Exit code: 0. Detailed read verification is kept in ignored local artifacts.
 
 ```bash
 bash scripts/fetch-iceberg-jars.sh
