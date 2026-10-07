@@ -211,5 +211,4 @@ artifacts/                   Ignored local run outputs
 - [Databricks Glue federation](https://docs.databricks.com/aws/en/query-federation/hms-federation-glue)
 - [NVIDIA GPU telemetry](https://docs.nvidia.com/datacenter/cloud-native/gpu-telemetry/latest/index.html)
 
-This repository is a local Git project. No remote repository has been created
-or configured yet.
+Public repository: [Booleans/gpu-telemetry-iceberg-sdp](https://github.com/Booleans/gpu-telemetry-iceberg-sdp).
