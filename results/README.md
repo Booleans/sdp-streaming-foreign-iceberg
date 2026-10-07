@@ -4,7 +4,7 @@ No AWS, Iceberg streaming, or Databricks experiments have been run yet.
 
 For each experiment create a directory named after the run ID and record:
 
-- Git commit and environment JSON produced by `gpu-iceberg`.
+- Git commit and environment JSON produced by `sdp-iceberg`.
 - Exact commands, sanitized configuration, start/end UTC times, and exit codes.
 - Source table schema, properties, snapshot IDs and snapshot operations.
 - Expected and observed row counts, distinct event counts, and sequence gaps.

@@ -1,8 +1,9 @@
-# Multi-cloud GPU telemetry: Iceberg and Spark Declarative Pipelines
+# SDP streaming from foreign Iceberg tables
 
-Reproduction project for streaming synthetic NVIDIA-style GPU telemetry from an
-AWS Glue-cataloged Apache Iceberg table, first with open source Spark Declarative
-Pipelines (SDP) on a laptop, then through a Unity Catalog foreign table in Databricks.
+Reproduction project demonstrating streaming reads from Apache Iceberg with open
+source Spark Declarative Pipelines (SDP) on a laptop, then from a Unity Catalog
+foreign Iceberg table in Databricks. AWS Glue provides the source catalog.
+Synthetic GPU telemetry is an interchangeable sample dataset.
 The goal is a small, repeatable engineering reproduction with inspectable source
 snapshots, checkpoints, configuration, and results.
 
@@ -52,7 +53,7 @@ dependencies with `uv lock`.
 ```bash
 uv python install 3.12.13
 uv sync --locked
-uv run --locked gpu-iceberg --config config/example.toml
+uv run --locked sdp-iceberg --config config/example.toml
 ```
 
 The last command writes `artifacts/environment.json` without contacting AWS or
@@ -66,7 +67,7 @@ to that installation, then install the local extra:
 java -version
 uv sync --locked --extra local
 uv run --locked --extra local python -c 'import pyspark; from pyspark import pipelines; print(pyspark.__version__)'
-uv run --locked --extra local gpu-iceberg --config config/example.toml
+uv run --locked --extra local sdp-iceberg --config config/example.toml
 ```
 
 The import check verifies Python package availability; it does not start Spark
@@ -197,7 +198,7 @@ local AWS configuration are ignored by Git.
 pyproject.toml / uv.lock      Python environment and dependency lock
 .python-version              Exact Python baseline
 config/example.toml          Shared experiment defaults and Maven coordinates
-src/gpu_telemetry_iceberg/    Environment-record CLI; implementation will grow here
+src/sdp_streaming_foreign_iceberg/    Environment-record CLI; implementation will grow here
 results/                     Reviewed experiment evidence
 artifacts/                   Ignored local run outputs
 ```
@@ -211,4 +212,4 @@ artifacts/                   Ignored local run outputs
 - [Databricks Glue federation](https://docs.databricks.com/aws/en/query-federation/hms-federation-glue)
 - [NVIDIA GPU telemetry](https://docs.nvidia.com/datacenter/cloud-native/gpu-telemetry/latest/index.html)
 
-Public repository: [Booleans/gpu-telemetry-iceberg-sdp](https://github.com/Booleans/gpu-telemetry-iceberg-sdp).
+Public repository: [Booleans/sdp-streaming-foreign-iceberg](https://github.com/Booleans/sdp-streaming-foreign-iceberg).
