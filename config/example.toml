@@ -1,0 +1,23 @@
+# Copy to config/local.toml. Never put credentials in this file.
+[aws]
+profile = "REPLACE_ME"
+region = "us-west-2"
+warehouse = "s3://REPLACE_ME/gpu-telemetry/warehouse/"
+database = "gpu_telemetry"
+table = "gpu_samples"
+
+[simulation]
+seed = 42
+start_time = "2026-01-01T00:00:00Z"
+gpus_per_cloud = 32
+clouds = ["aws", "azure", "oci", "gcp"]
+sample_interval_seconds = 5
+commit_interval_seconds = 60
+duration_seconds = 600
+
+[runtime]
+iceberg_version = "1.11.0"
+iceberg_runtime = "org.apache.iceberg:iceberg-spark-runtime-4.1_2.13:1.11.0"
+iceberg_aws_bundle = "org.apache.iceberg:iceberg-aws-bundle:1.11.0"
+table_format_version = 2
+java_major = 17

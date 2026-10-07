@@ -1,0 +1,12 @@
+.venv/
+.cache/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+config/local.toml
+data/
+artifacts/
+spark-warehouse/
+metastore_db/
+derby.log
