@@ -43,11 +43,16 @@ Use [uv](https://docs.astral.sh/uv/) for Python installation, environments,
 dependency resolution, and command execution. Run commands from the repository
 root. Commit `uv.lock`; use `--locked` to prevent implicit lockfile changes.
 
-The default package index is configured in `pyproject.toml` as
-`a privately configured package index`. Access to the company proxy is
-required for dependency downloads; direct public PyPI is not used as a fallback.
-The lockfile also records proxy artifact URLs. Use this same index when updating
-dependencies with `uv lock`.
+The committed lockfile uses public PyPI registry and artifact URLs. Company
+proxy addresses belong in ignored local environment configuration, never in
+tracked files. For local dependency updates set `UV_DEFAULT_INDEX` privately;
+uv may then put that address into `uv.lock`. Canonicalize the lockfile back to
+public registry/artifact URLs before committing. Package versions and hashes
+must remain unchanged. Dependency installation on restricted networks requires
+an accessible local mirror or an existing package cache. For an already locked
+environment, source your ignored environment file and use `uv sync --frozen`
+(or `uv run --frozen`) to preserve the public lockfile. This local workflow
+was verified on the authoring laptop.
 
 ```bash
 uv python install 3.12.13
@@ -77,8 +82,9 @@ Maven proxy before launching Spark:
 bash scripts/fetch-iceberg-jars.sh
 ```
 
-The script uses `a privately configured Maven repository` and checks SHA-256
-hashes from `scripts/iceberg-jars.sha256`. Python dependencies are locked by uv;
+The script uses the public Maven repository by default. Set
+`MAVEN_REPOSITORY_URL` in your private environment to use a company mirror. It
+checks SHA-256 hashes from `scripts/iceberg-jars.sha256`. Python dependencies are locked by uv;
 Maven coordinates and JAR hashes are pinned separately.
 
 | Component | Selected baseline |

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Download the pinned Spark source dependencies through the Databricks proxy.
+# Download the pinned Spark source dependencies from a configurable Maven repository.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p artifacts/runtime/jars
-proxy='a privately configured Maven repository'
+proxy="${MAVEN_REPOSITORY_URL:-https://repo.maven.apache.org/maven2}"
 for artifact in iceberg-spark-runtime-4.1_2.13 iceberg-aws-bundle; do
     target="artifacts/runtime/jars/${artifact}-1.11.0.jar"
     if [[ ! -f "$target" ]]; then
