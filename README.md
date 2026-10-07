@@ -12,11 +12,10 @@ Iceberg writer, SDP definitions, and Databricks deployment are planned next.
 No AWS resources have been created and streaming compatibility has not been
 established. The local and Databricks access paths must be tested separately.
 
-**Bootstrap limitation on the authoring machine:** PyPI connections were refused,
-so `uv.lock` has not yet been generated. Java is also unavailable. On a machine
-with PyPI access, run `uv lock` first and commit the generated lockfile before
-using the `--locked` commands below. Until then the environment is pinned at the
-top level but not fully locked or verified. Do not report it as a reproduced run.
+**Execution limitation on the authoring machine:** Java is unavailable, so Spark
+execution remains unverified. Python dependencies are locked in `uv.lock` using
+the Databricks PyPI proxy. A Python installation or import check does not establish
+an end-to-end reproduced run.
 
 ## Scenario and architecture
 
@@ -43,6 +42,12 @@ are not required for this initial experiment.
 Use [uv](https://docs.astral.sh/uv/) for Python installation, environments,
 dependency resolution, and command execution. Run commands from the repository
 root. Commit `uv.lock`; use `--locked` to prevent implicit lockfile changes.
+
+The default package index is configured in `pyproject.toml` as
+`a privately configured package index`. Access to the company proxy is
+required for dependency downloads; direct public PyPI is not used as a fallback.
+The lockfile also records proxy artifact URLs. Use this same index when updating
+dependencies with `uv lock`.
 
 ```bash
 uv python install 3.12.13
